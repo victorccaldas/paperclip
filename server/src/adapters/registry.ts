@@ -222,3 +222,7 @@ export function listServerAdapters(): ServerAdapterModule[] {
 export function findServerAdapter(type: string): ServerAdapterModule | null {
   return adaptersByType.get(type) ?? null;
 }
+
+export function registerAdapter(adapter: ServerAdapterModule): void {
+  adaptersByType.set(adapter.type, adapter);
+}

@@ -69,11 +69,16 @@ const execFile = promisify(execFileCallback);
 const SESSIONED_LOCAL_ADAPTERS = new Set([
   "claude_local",
   "codex_local",
+  "copilot_cli",
   "cursor",
   "gemini_local",
   "opencode_local",
   "pi_local",
 ]);
+
+export function registerSessionedAdapter(type: string): void {
+  SESSIONED_LOCAL_ADAPTERS.add(type);
+}
 
 function deriveRepoNameFromRepoUrl(repoUrl: string | null): string | null {
   const trimmed = repoUrl?.trim() ?? "";

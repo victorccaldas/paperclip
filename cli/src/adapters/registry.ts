@@ -6,6 +6,7 @@ import { printGeminiStreamEvent } from "@paperclipai/adapter-gemini-local/cli";
 import { printOpenCodeStreamEvent } from "@paperclipai/adapter-opencode-local/cli";
 import { printPiStreamEvent } from "@paperclipai/adapter-pi-local/cli";
 import { printOpenClawGatewayStreamEvent } from "@paperclipai/adapter-openclaw-gateway/cli";
+import { printCopilotCliStreamEvent } from "@paperclipai/adapter-copilot-cli/cli";
 import { processCLIAdapter } from "./process/index.js";
 import { httpCLIAdapter } from "./http/index.js";
 
@@ -44,6 +45,11 @@ const openclawGatewayCLIAdapter: CLIAdapterModule = {
   formatStdoutEvent: printOpenClawGatewayStreamEvent,
 };
 
+const copilotCliCLIAdapter: CLIAdapterModule = {
+  type: "copilot_cli",
+  formatStdoutEvent: printCopilotCliStreamEvent,
+};
+
 const adaptersByType = new Map<string, CLIAdapterModule>(
   [
     claudeLocalCLIAdapter,
@@ -53,6 +59,7 @@ const adaptersByType = new Map<string, CLIAdapterModule>(
     cursorLocalCLIAdapter,
     geminiLocalCLIAdapter,
     openclawGatewayCLIAdapter,
+    copilotCliCLIAdapter,
     processCLIAdapter,
     httpCLIAdapter,
   ].map((a) => [a.type, a]),
@@ -60,4 +67,8 @@ const adaptersByType = new Map<string, CLIAdapterModule>(
 
 export function getCLIAdapter(type: string): CLIAdapterModule {
   return adaptersByType.get(type) ?? processCLIAdapter;
+}
+
+export function registerCLIAdapter(adapter: CLIAdapterModule): void {
+  adaptersByType.set(adapter.type, adapter);
 }

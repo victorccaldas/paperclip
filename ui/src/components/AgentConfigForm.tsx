@@ -962,6 +962,9 @@ function AdapterEnvironmentResult({ result }: { result: AdapterEnvironmentTestRe
 
 const ENABLED_ADAPTER_TYPES = new Set(["claude_local", "codex_local", "gemini_local", "opencode_local", "pi_local", "cursor"]);
 
+/* Add "copilot_cli" into ENABLED_ADAPTER_TYPES */
+ENABLED_ADAPTER_TYPES.add("copilot_cli");
+
 /** Display list includes all real adapter types plus UI-only coming-soon entries. */
 const ADAPTER_DISPLAY_LIST: { value: string; label: string; comingSoon: boolean }[] = [
   ...AGENT_ADAPTER_TYPES.map((t) => ({

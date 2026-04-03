@@ -8,6 +8,7 @@ import { piLocalUIAdapter } from "./pi-local";
 import { openClawGatewayUIAdapter } from "./openclaw-gateway";
 import { processUIAdapter } from "./process";
 import { httpUIAdapter } from "./http";
+import { copilotCliUIAdapter } from "./copilot-cli";
 
 const uiAdapters: UIAdapterModule[] = [
   claudeLocalUIAdapter,
@@ -17,6 +18,7 @@ const uiAdapters: UIAdapterModule[] = [
   piLocalUIAdapter,
   cursorLocalUIAdapter,
   openClawGatewayUIAdapter,
+  copilotCliUIAdapter,
   processUIAdapter,
   httpUIAdapter,
 ];
@@ -27,6 +29,10 @@ const adaptersByType = new Map<string, UIAdapterModule>(
 
 export function getUIAdapter(type: string): UIAdapterModule {
   return adaptersByType.get(type) ?? processUIAdapter;
+}
+
+export function registerUIAdapter(adapter: UIAdapterModule): void {
+  adaptersByType.set(adapter.type, adapter);
 }
 
 export function listUIAdapters(): UIAdapterModule[] {

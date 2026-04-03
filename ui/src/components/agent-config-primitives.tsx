@@ -66,6 +66,7 @@ export const adapterLabels: Record<string, string> = {
   cursor: "Cursor (local)",
   process: "Process",
   http: "HTTP",
+  copilot_cli: "Copilot CLI (local)",
 };
 
 export const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
