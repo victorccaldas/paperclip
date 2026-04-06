@@ -140,3 +140,43 @@ export interface InstanceSchedulerHeartbeatAgent {
   schedulerActive: boolean;
   lastHeartbeatAt: Date | null;
 }
+
+// -- Single-Instance Orchestrator Mode --
+
+export interface HeartbeatPolicy {
+  enabled: boolean;
+  intervalSec: number;
+  singleInstanceOrchestrator: boolean;
+}
+
+export interface OrchestratorAgentInfo {
+  id: string;
+  name: string;
+  role: AgentRole;
+  title: string | null;
+  status: AgentStatus;
+  capabilities: string | null;
+  adapterType: string;
+}
+
+export interface OrchestratorPendingTask {
+  id: string;
+  identifier: string | null;
+  title: string;
+  status: string;
+  priority: string | null;
+}
+
+export interface OrchestratorContextPayload {
+  orchestratorMode: true;
+  companyAgents: OrchestratorAgentInfo[];
+  pendingTasksByAgent: Record<string, OrchestratorPendingTask[]>;
+  paperclipApiUrl: string | null;
+  orchestratorCompanyId: string;
+  orchestratorRedirect?: boolean;
+  originalTargetAgentId?: string;
+  originalTargetAgentName?: string;
+  originalTargetAgentRole?: string;
+  originalReason?: string;
+  originalSource?: string;
+}

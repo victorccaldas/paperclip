@@ -50,6 +50,16 @@ In agent runtime settings, configure heartbeat policy:
 - `wakeOnAssignment`: wake when assigned work
 - `wakeOnOnDemand`: allow ping-style on-demand wakeups
 - `wakeOnAutomation`: allow system automation wakeups
+- `singleInstanceOrchestrator`: when `true`, this agent acts as the sole orchestrator for its company — all other agents' heartbeats and wakeups are redirected to this agent (typically the CEO)
+
+### Single-Instance Orchestrator Mode
+
+When `singleInstanceOrchestrator: true` is set on an agent (typically the CEO):
+
+1. **Only the orchestrator receives heartbeats** — timer ticks for non-orchestrator agents in the same company are skipped
+2. **Wakeups are redirected** — wakeups targeting non-orchestrator agents are redirected to the orchestrator, with original target info preserved in context
+3. **Enriched context** — the orchestrator's execution context includes the full company roster and pending tasks per agent
+4. **Subagent dispatch** — the orchestrator uses the `runSubagent` tool to spawn temporary execution instances for other agents
 
 ## 3.3 Working directory and execution limits
 

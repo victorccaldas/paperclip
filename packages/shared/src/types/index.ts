@@ -151,6 +151,10 @@ export type {
   AgentTaskSession,
   AgentWakeupRequest,
   InstanceSchedulerHeartbeatAgent,
+  HeartbeatPolicy,
+  OrchestratorAgentInfo,
+  OrchestratorPendingTask,
+  OrchestratorContextPayload,
 } from "./heartbeat.js";
 export type { LiveEvent } from "./live.js";
 export type { DashboardSummary } from "./dashboard.js";

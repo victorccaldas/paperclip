@@ -48,7 +48,19 @@ If `PAPERCLIP_APPROVAL_ID` is set:
 3. Update `$AGENT_HOME/memory/YYYY-MM-DD.md` with timeline entries.
 4. Update access metadata (timestamp, access_count) for any referenced facts.
 
-## 8. Exit
+## 8. Orchestrator Mode (if active)
+
+If your heartbeat context includes `orchestratorMode: true`, you are in **single-instance orchestrator mode**. See `ORCHESTRATOR.md` for full details. Summary:
+
+1. Check `orchestratorRedirect` in context — if set, dispatch the original target agent first.
+2. Review `pendingTasksByAgent` for all agents with pending work.
+3. Dispatch subagents via `runSubagent`, passing their Paperclip agent ID and task details.
+4. Handle subagent results — review output, create follow-ups if needed.
+5. Return to idle when all dispatching is complete.
+
+**Important:** In orchestrator mode, do NOT do IC work yourself. Always delegate to the appropriate subagent.
+
+## 9. Exit
 
 - Comment on any in_progress work before exiting.
 - If no assignments and no valid mention-handoff, exit cleanly.

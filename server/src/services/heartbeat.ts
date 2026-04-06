@@ -1737,7 +1737,34 @@ export function heartbeatService(db: Db) {
       intervalSec: Math.max(0, asNumber(heartbeat.intervalSec, 0)),
       wakeOnDemand: asBoolean(heartbeat.wakeOnDemand ?? heartbeat.wakeOnAssignment ?? heartbeat.wakeOnOnDemand ?? heartbeat.wakeOnAutomation, true),
       maxConcurrentRuns: normalizeMaxConcurrentRuns(heartbeat.maxConcurrentRuns),
+      singleInstanceOrchestrator: asBoolean(heartbeat.singleInstanceOrchestrator, false),
     };
+  }
+
+  /**
+   * Find the orchestrator agent for a company (if any).
+   * An orchestrator is an agent with `runtimeConfig.heartbeat.singleInstanceOrchestrator: true`.
+   * Returns the orchestrator agent or null if the company uses independent agent mode.
+   */
+  function findOrchestratorInList(agentList: Array<typeof agents.$inferSelect>): typeof agents.$inferSelect | null {
+    for (const agent of agentList) {
+      if (agent.status === "terminated") continue;
+      const policy = parseHeartbeatPolicy(agent);
+      if (policy.singleInstanceOrchestrator) return agent;
+    }
+    return null;
+  }
+
+  /**
+   * Look up the orchestrator agent for a company from the database.
+   * Returns null if no orchestrator is configured (independent mode).
+   */
+  async function getCompanyOrchestrator(companyId: string): Promise<typeof agents.$inferSelect | null> {
+    const companyAgents = await db
+      .select()
+      .from(agents)
+      .where(and(eq(agents.companyId, companyId)));
+    return findOrchestratorInList(companyAgents);
   }
 
   async function countRunningRunsForAgent(agentId: string) {
@@ -2668,6 +2695,86 @@ export function heartbeatService(db: Db) {
           "local agent jwt secret missing or invalid; running without injected PAPERCLIP_API_KEY",
         );
       }
+
+      // Enrich context for single-instance orchestrator mode
+      const orchestratorPolicy = parseHeartbeatPolicy(agent);
+      if (orchestratorPolicy.singleInstanceOrchestrator) {
+        const companyAgents = await db
+          .select({
+            id: agents.id,
+            name: agents.name,
+            role: agents.role,
+            title: agents.title,
+            status: agents.status,
+            capabilities: agents.capabilities,
+            adapterType: agents.adapterType,
+          })
+          .from(agents)
+          .where(and(eq(agents.companyId, agent.companyId)));
+
+        const nonTerminatedAgents = companyAgents.filter(
+          (a) => a.status !== "terminated" && a.id !== agent.id,
+        );
+
+        context.orchestratorMode = true;
+        context.companyAgents = nonTerminatedAgents.map((a) => ({
+          id: a.id,
+          name: a.name,
+          role: a.role,
+          title: a.title,
+          status: a.status,
+          capabilities: a.capabilities,
+          adapterType: a.adapterType,
+        }));
+
+        // Include API URL so the orchestrator can instruct subagents
+        context.paperclipApiUrl = process.env.PAPERCLIP_API_URL ?? null;
+        context.orchestratorCompanyId = agent.companyId;
+
+        // Fetch pending tasks for each agent
+        if (nonTerminatedAgents.length > 0) {
+          const agentIds = nonTerminatedAgents.map((a) => a.id);
+          const pendingIssues = await db
+            .select({
+              id: issues.id,
+              identifier: issues.identifier,
+              title: issues.title,
+              status: issues.status,
+              priority: issues.priority,
+              assigneeAgentId: issues.assigneeAgentId,
+            })
+            .from(issues)
+            .where(
+              and(
+                eq(issues.companyId, agent.companyId),
+                inArray(issues.assigneeAgentId, agentIds),
+                inArray(issues.status, ["todo", "in_progress", "blocked"]),
+              ),
+            );
+
+          const tasksByAgent: Record<string, Array<{ id: string; identifier: string | null; title: string; status: string; priority: string | null }>> = {};
+          for (const issue of pendingIssues) {
+            if (!issue.assigneeAgentId) continue;
+            const list = tasksByAgent[issue.assigneeAgentId] ?? [];
+            list.push({
+              id: issue.id,
+              identifier: issue.identifier,
+              title: issue.title,
+              status: issue.status,
+              priority: issue.priority,
+            });
+            tasksByAgent[issue.assigneeAgentId] = list;
+          }
+          context.pendingTasksByAgent = tasksByAgent;
+        }
+
+        // Update context snapshot in DB
+        await db
+          .update(heartbeatRuns)
+          .set({ contextSnapshot: context, updatedAt: new Date() })
+          .where(eq(heartbeatRuns.id, run.id));
+      }
+
       const adapterResult = await adapter.execute({
         runId: run.id,
         agent,
@@ -3148,6 +3255,38 @@ export function heartbeatService(db: Db) {
 
     const agent = await getAgent(agentId);
     if (!agent) throw notFound("Agent not found");
+
+    // Single-instance orchestrator redirect: if the target agent is not the orchestrator
+    // but the company has one, redirect the wakeup to the orchestrator instead.
+    const targetPolicy = parseHeartbeatPolicy(agent);
+    if (!targetPolicy.singleInstanceOrchestrator) {
+      const orchestrator = await getCompanyOrchestrator(agent.companyId);
+      if (orchestrator && orchestrator.id !== agent.id) {
+        logger.info(
+          {
+            originalAgentId: agent.id,
+            originalAgentName: agent.name,
+            orchestratorId: orchestrator.id,
+            source,
+            reason,
+          },
+          "redirecting wakeup to single-instance orchestrator",
+        );
+        return enqueueWakeup(orchestrator.id, {
+          ...opts,
+          contextSnapshot: {
+            ...(opts.contextSnapshot ?? {}),
+            orchestratorRedirect: true,
+            originalTargetAgentId: agent.id,
+            originalTargetAgentName: agent.name,
+            originalTargetAgentRole: agent.role,
+            originalReason: reason,
+            originalSource: source,
+          },
+        });
+      }
+    }
+
     const explicitResumeSession = await resolveExplicitResumeSessionOverride(agent, payload, taskKey);
     if (explicitResumeSession) {
       enrichedContextSnapshot.resumeFromRunId = explicitResumeSession.resumeFromRunId;
@@ -3965,10 +4104,27 @@ export function heartbeatService(db: Db) {
       let enqueued = 0;
       let skipped = 0;
 
+      // Group agents by company to detect orchestrator mode
+      const agentsByCompany = new Map<string, Array<typeof agents.$inferSelect>>();
+      for (const agent of allAgents) {
+        const list = agentsByCompany.get(agent.companyId) ?? [];
+        list.push(agent);
+        agentsByCompany.set(agent.companyId, list);
+      }
+      // Pre-compute orchestrator for each company
+      const orchestratorByCompany = new Map<string, typeof agents.$inferSelect | null>();
+      for (const [companyId, companyAgents] of agentsByCompany) {
+        orchestratorByCompany.set(companyId, findOrchestratorInList(companyAgents));
+      }
+
       for (const agent of allAgents) {
         if (agent.status === "paused" || agent.status === "terminated" || agent.status === "pending_approval") continue;
         const policy = parseHeartbeatPolicy(agent);
         if (!policy.enabled || policy.intervalSec <= 0) continue;
+
+        // In single-instance orchestrator mode, only the orchestrator gets timer heartbeats
+        const orchestrator = orchestratorByCompany.get(agent.companyId);
+        if (orchestrator && orchestrator.id !== agent.id) continue;
 
         checked += 1;
         const baseline = new Date(agent.lastHeartbeatAt ?? agent.createdAt).getTime();
